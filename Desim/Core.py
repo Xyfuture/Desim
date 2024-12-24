@@ -4,31 +4,81 @@ from collections import deque
 from typing import Callable, Optional, Deque
 from greenlet import greenlet
 from sortedcontainers import SortedList
-
-from Desim.Utils import PriorityQueue
+from Desim.Utils import PriorityQueue,ClassProperty
 
 
 class SimTime:
-    def __init__(self):
-        pass
+    def __init__(self, cycle: int = 0):
+        if not isinstance(cycle, int):
+            raise TypeError("cycle must be an int")
+        self.cycle = cycle
 
+    def __eq__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle == other.cycle
+        return False
+
+    def __ne__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle != other.cycle
+        return True
+
+    def __lt__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle < other.cycle
+        return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle <= other.cycle
+        return NotImplemented
+
+    def __gt__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle > other.cycle
+        return NotImplemented
+
+    def __ge__(self, other):
+        if isinstance(other, SimTime):
+            return self.cycle >= other.cycle
+        return NotImplemented
+
+    def __hash__(self):
+        # Use the hash of the cycle for simplicity
+        return hash(self.cycle)
+
+    def __repr__(self):
+        return f"SimTime({self.cycle})"
+    
     def __add__(self, other):
-        pass
+        if isinstance(other, SimTime):
+            return SimTime(self.cycle + other.cycle)
+        return NotImplemented
+
+
 
 class SimCoroutine(greenlet):
-    def __init__(self):
-        super(SimCoroutine, self).__init__()
+    def __init__(self,func:Callable):
+        super(SimCoroutine, self).__init__(func,SimSession.scheduler.executor_coroutine)
+
 
 
 
 
 class SimModule:
     def __init__(self):
-        pass
+        self._coroutines:set[SimCoroutine] = set() # method 会被改写为 coroutine
+
+        SimSession.sim_modules.append(self)
+
 
     def register_coroutine(self,func:Callable,events:list[Event]):
-        pass
-
+        coroutine = SimCoroutine(func)
+        self._coroutines.add(coroutine)
+        for event in events:
+            event.add_static_waiting_coroutine(coroutine)
+        
+        
     def register_method(self,func:Callable,events:list[Event]):
         pass
 
@@ -37,19 +87,18 @@ class SimModule:
     def wait(*args,**kwargs):
         for event in args:
             assert isinstance(event,Event)
-            # 注册 event
+            # 注册 event 将当前的Coroutine加入到 event的列表中
+            event.add_waiting_coroutine(greenlet.getcurrent()) 
 
         # 切换出 协程, 切换到指定的 scheduler 的线程
-        SimSession.scheduler.executor.switch()
+        SimSession.scheduler.executor_coroutine.switch()
 
-        # 切换回来，取消event
+        # 切换回来，取消event 当 wait 多个 event 的时候，只要一个 event 触发了，就结束了
+        event:Event
         for event in args:
-            pass
-
-
-        pass
-
-
+            event.remove_waiting_coroutine(greenlet.getcurrent())
+        
+        # 结束 wait 恢复到协程继续执行
 
 
 
@@ -66,8 +115,8 @@ class Event:
     def __init__(self):
         self.notify_time:SimTime = None
 
-        self.static_waiting_coroutines:list[SimCoroutine] = []
-        self.waiting_coroutines:list[SimCoroutine] = []
+        self.static_waiting_coroutines:set[SimCoroutine] = set()
+        self.waiting_coroutines:set[SimCoroutine] = set()
 
     def notify(self,delay_time:SimTime):
         # 调用此函数的时候将 event 插入到
@@ -91,12 +140,20 @@ class Event:
         for coroutine in coroutines:
             self.waiting_coroutines.append(coroutine)
 
+    def remove_waiting_coroutine(self,*coroutines:SimCoroutine):
+        for coroutine in coroutines:
+            self.waiting_coroutines.remove(coroutine)
+
+    def get_waiting_coroutines(self)->set[SimCoroutine]:
+        return self.static_waiting_coroutines | self.waiting_coroutines
+    
+
     def cancel(self):
         # 取消下一次的 notify 操作
         SimSession.scheduler.event_queue.remove(self)
 
     def clear_waiting_coroutine(self):
-        self.waiting_coroutines = []
+        self.waiting_coroutines = set()
 
 
 
@@ -111,17 +168,30 @@ class Scheduler:
         # self.notified_events:deque[Event] = deque()
 
 
-        self.sim_time:SimTime = SimTime()
+        self.sim_time:SimTime = SimTime(0)
 
-        self.executor:greenlet = None
+        self.executor_coroutine:greenlet = None
 
+        self.initialize_coroutine = greenlet(self.initialize)
+        self.main_loop_coroutine = greenlet(self.main_loop)
+
+
+    def run(self):
+        self.initialize_coroutine.switch()
+        self.main_loop_coroutine.switch()
 
 
     def initialize(self):
+        self.executor_coroutine = greenlet.getcurrent()
         # 初始化所有的 coroutine
+        for module in SimSession.sim_modules:
+            for coroutine in module._coroutines:
+                coroutine.switch()
         pass
 
     def main_loop(self):
+        self.executor_coroutine = greenlet.getcurrent()
+
         # 从 runnable queue 中取出一个 coroutine 运行
         while True:
 
@@ -154,10 +224,7 @@ class Scheduler:
             notified_event:Event = self.event_queue.pop()
 
             # 使所有的 coroutine 都设置为runnable 状态
-            for coroutine in notified_event.static_waiting_coroutines:
-                self.runnable_queue.append(coroutine)
-
-            for coroutine in notified_event.waiting_coroutines:
+            for coroutine in notified_event.get_waiting_coroutines():
                 self.runnable_queue.append(coroutine)
 
             # 可以考虑一个event 的特殊回调函数，实现值更新的功能
@@ -168,14 +235,30 @@ class Scheduler:
 
 class SimSession:
     scheduler:Optional[Scheduler] = None
+    
+    sim_modules:list[SimModule] = []
 
-    @classmethod
-    @property
+
+    @ClassProperty
     def sim_time(cls)->SimTime:
         return cls.scheduler.sim_time
 
+
+
     def __init__(self):
         pass
+
+    @classmethod
+    def reset(cls):
+        cls.scheduler = None 
+        cls.sim_modules = []
+
+    @classmethod
+    def init(cls):
+        cls.scheduler = Scheduler()
+        cls.sim_modules = []
+
+
 
 
 

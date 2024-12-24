@@ -97,6 +97,19 @@ class PriorityQueue(Generic[T]):
         return len(self._queue) > 0
 
 
+
+U = TypeVar('U')  # 改为 U，表示描述符的泛型类型
+
+class TypedDescriptor(Generic[U]):
+    def __init__(self, value: U):
+        self.value = value
+
+    def __get__(self, instance, owner) -> U:  # 返回值类型为 U
+        return self.value
+
+
+
+
 # 示例用法
 if __name__ == "__main__":
     # 定义一个数据类或简单对象，包含优先级信息
