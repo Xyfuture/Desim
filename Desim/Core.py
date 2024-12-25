@@ -132,13 +132,13 @@ class Event:
 
     def add_static_waiting_coroutine(self,*coroutines:SimCoroutine):
         for coroutine in coroutines:
-            self.static_waiting_coroutines.append(coroutine)
+            self.static_waiting_coroutines.add(coroutine)
 
 
     def add_waiting_coroutine(self,*coroutines:SimCoroutine):
         # dynamic
         for coroutine in coroutines:
-            self.waiting_coroutines.append(coroutine)
+            self.waiting_coroutines.add(coroutine)
 
     def remove_waiting_coroutine(self,*coroutines:SimCoroutine):
         for coroutine in coroutines:
@@ -150,6 +150,7 @@ class Event:
 
     def cancel(self):
         # 取消下一次的 notify 操作
+        self.notify_time = SimTime()
         SimSession.scheduler.event_queue.remove(self)
 
     def clear_waiting_coroutine(self):
