@@ -100,12 +100,22 @@ class PriorityQueue(Generic[T]):
 
 U = TypeVar('U')  # 改为 U，表示描述符的泛型类型
 
-class TypedDescriptor(Generic[U]):
-    def __init__(self, value: U):
-        self.value = value
+# class ClassProperty(Generic[U]):
+#     def __init__(self, value: U):
+#         self.value = value
+#
+#     def __get__(self, instance, owner) -> U:  # 返回值类型为 U
+#         return self.value()
 
-    def __get__(self, instance, owner) -> U:  # 返回值类型为 U
-        return self.value
+class ClassProperty(Generic[U]):
+    def __init__(self, method: Callable[..., U]):
+        self.method = method
+        # functools.update_wrapper(self, method) # type: ignore
+
+    def __get__(self, obj, cls=None) -> U:
+        if cls is None:
+            cls = type(obj)
+        return self.method(cls)
 
 
 

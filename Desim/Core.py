@@ -72,14 +72,14 @@ class SimModule:
         SimSession.sim_modules.append(self)
 
 
-    def register_coroutine(self,func:Callable,events:list[Event]):
+    def register_coroutine(self,func:Callable,*events:Event):
         coroutine = SimCoroutine(func)
         self._coroutines.add(coroutine)
         for event in events:
             event.add_static_waiting_coroutine(coroutine)
         
         
-    def register_method(self,func:Callable,events:list[Event]):
+    def register_method(self,func:Callable,*events:Event):
         pass
 
 
@@ -142,7 +142,7 @@ class Event:
 
     def remove_waiting_coroutine(self,*coroutines:SimCoroutine):
         for coroutine in coroutines:
-            self.waiting_coroutines.remove(coroutine)
+            self.waiting_coroutines.discard(coroutine)
 
     def get_waiting_coroutines(self)->set[SimCoroutine]:
         return self.static_waiting_coroutines | self.waiting_coroutines
