@@ -49,7 +49,7 @@ class PriorityQueue(Generic[T]):
             return
         self._queue.remove(item)
         self._set.remove(item)
-        print(f"已删除: {item}")
+        # print(f"已删除: {item}")
 
     def update(self, old_item: T, new_item: T):
         """

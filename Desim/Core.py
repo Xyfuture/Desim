@@ -59,7 +59,7 @@ class SimTime:
 
 class SimCoroutine(greenlet):
     def __init__(self,func:Callable):
-        super(SimCoroutine, self).__init__(func,SimSession.scheduler.executor_coroutine)
+        super(SimCoroutine, self).__init__(func)
 
 
 
@@ -101,6 +101,16 @@ class SimModule:
         # 结束 wait 恢复到协程继续执行
 
 
+    @staticmethod
+    def wait_time(sim_time:SimTime):
+        event = Event()
+        event.notify(sim_time)
+        SimModule.wait(event)
+
+
+
+
+
 
     def _method_wrapper(self,func:Callable,events:list[Event]):
         def method_loop():
@@ -124,6 +134,9 @@ class Event:
 
         self.notify_time = SimSession.sim_time + delay_time
         SimSession.scheduler.event_queue.append(self)
+
+    def wait(self,*args,**kwargs):
+        SimModule.wait(*(self,*args),**kwargs)
 
 
 
@@ -156,6 +169,31 @@ class Event:
     def clear_waiting_coroutine(self):
         self.waiting_coroutines = set()
 
+    def __lt__(self, other):
+        return self.notify_time < other.notify_time
+
+    def __gt__(self, other):
+        return self.notify_time > other.notify_time
+
+
+    def __eq__(self, other):
+        return self.notify_time == other.notify_time
+
+
+    def __le__(self, other):
+        return self.notify_time <= other.notify_time
+
+
+    def __ge__(self, other):
+        return self.notify_time >= other.notify_time
+
+
+    def __ne__(self, other):
+        return self.notify_time != other.notify_time
+
+    def __hash__(self):
+        return id(self)
+
 
 
 class Scheduler:
@@ -187,7 +225,11 @@ class Scheduler:
         # 初始化所有的 coroutine
         for module in SimSession.sim_modules:
             for coroutine in module._coroutines:
+                # 需要指定 parent，这样 sim module的 Coroutine执行结束后，会回到mainloop 执行其他的 Coroutine
+                # 如果Coroutine在initial阶段结束，就直接回到initialize中
+                coroutine.parent = self.initialize_coroutine
                 coroutine.switch()
+                coroutine.parent = self.main_loop_coroutine
         pass
 
     def main_loop(self):

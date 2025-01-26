@@ -1,5 +1,9 @@
 # Test case for SimModule and coroutine interaction
+from greenlet import greenlet
+from jedi.inference.value.function import LambdaName
+
 from Desim.Core import SimSession, SimModule, Event, SimTime
+from Desim.Sync import SimSemaphore
 
 
 def test_simulation():
@@ -36,5 +40,36 @@ def test_simulation():
     SimSession.scheduler.run()
 
 
-# Run the test
-test_simulation()
+def test_semaphore():
+    class Trail(SimModule):
+        def __init__(self):
+            super().__init__()
+            self.semaphore = SimSemaphore(3)
+
+            self.register_coroutine(self.producer)
+            self.register_coroutine(self.consumer)
+
+        def producer(self):
+            SimModule.wait_time(SimTime(5))
+            for i in range(5):
+                self.semaphore.post()
+                # SimModule.wait_time(SimTime(2))
+                print(f"[Producer] Producing at time {SimSession.sim_time}")
+
+
+        def consumer(self):
+            for i in range(9):
+                self.semaphore.wait()
+                print(f"[Consumer] Consuming at time {SimSession.sim_time}")
+
+
+    SimSession.reset()
+    SimSession.init()
+    module = Trail()
+    SimSession.scheduler.run()
+
+
+if __name__ == '__main__':
+    # Run the test
+    test_semaphore()
+    # test_simulation()
