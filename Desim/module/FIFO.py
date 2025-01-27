@@ -22,7 +22,7 @@ class FIFO:
         if self.empty_semaphore.get_value() == 0:
             self.is_empty_event.notify(SimTime(1))
 
-        front_data = self.fifo_data.pop()
+        front_data = self.fifo_data.popleft()
         return front_data
 
 

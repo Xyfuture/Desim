@@ -8,53 +8,78 @@ from Desim.Utils import PriorityQueue,ClassProperty
 
 
 class SimTime:
-    def __init__(self, cycle: int = 0):
+    def __init__(self, cycle: int = 0, delta_cycle: int = 1):
         if not isinstance(cycle, int):
             raise TypeError("cycle must be an int")
+        if not isinstance(delta_cycle, int):
+            raise TypeError("delta_cycle must be an int")
         self.cycle = cycle
+        self.delta_cycle = delta_cycle
 
     def __eq__(self, other):
         if isinstance(other, SimTime):
-            return self.cycle == other.cycle
+            return self.cycle == other.cycle and self.delta_cycle == other.delta_cycle
         return False
 
     def __ne__(self, other):
         if isinstance(other, SimTime):
-            return self.cycle != other.cycle
+            return self.cycle != other.cycle or self.delta_cycle != other.delta_cycle
         return True
 
     def __lt__(self, other):
         if isinstance(other, SimTime):
+            if self.cycle == other.cycle:
+                return self.delta_cycle < other.delta_cycle
             return self.cycle < other.cycle
         return NotImplemented
 
     def __le__(self, other):
         if isinstance(other, SimTime):
+            if self.cycle == other.cycle:
+                return self.delta_cycle <= other.delta_cycle
             return self.cycle <= other.cycle
         return NotImplemented
 
     def __gt__(self, other):
         if isinstance(other, SimTime):
+            if self.cycle == other.cycle:
+                return self.delta_cycle > other.delta_cycle
             return self.cycle > other.cycle
         return NotImplemented
 
     def __ge__(self, other):
         if isinstance(other, SimTime):
+            if self.cycle == other.cycle:
+                return self.delta_cycle >= other.delta_cycle
             return self.cycle >= other.cycle
         return NotImplemented
 
     def __hash__(self):
-        # Use the hash of the cycle for simplicity
-        return hash(self.cycle)
+        # Combine the hash of cycle and delta_cycle to ensure uniqueness
+        return hash((self.cycle, self.delta_cycle))
 
     def __repr__(self):
-        return f"SimTime({self.cycle})"
+        return f"SimTime(cycle={self.cycle}, delta_cycle={self.delta_cycle})"
     
     def __add__(self, other):
-        if isinstance(other, SimTime):
-            return SimTime(self.cycle + other.cycle)
+        # if isinstance(other, SimTime):
+        #     new_cycle = self.cycle + other.cycle
+        #     new_delta_cycle = self.delta_cycle + other.delta_cycle
+        #     if new_delta_cycle >= 1:
+        #         new_cycle += new_delta_cycle // 1
+        #         new_delta_cycle = new_delta_cycle % 1
+        #     return SimTime(new_cycle, new_delta_cycle)
+        # return NotImplemented
+        if isinstance(other,SimTime):
+            if self.cycle == 0 or other.cycle == 0:
+                new_cycle = self.cycle + other.cycle
+                new_delat_cycle = self.delta_cycle + other.delta_cycle
+            else:
+                new_cycle = self.cycle + other.cycle 
+                new_delat_cycle = 0 
+            
+            return SimTime(new_cycle,new_delat_cycle)
         return NotImplemented
-
 
 
 class SimCoroutine(greenlet):
@@ -207,7 +232,7 @@ class Scheduler:
         # self.notified_events:deque[Event] = deque()
 
 
-        self.sim_time:SimTime = SimTime(0)
+        self.sim_time:SimTime = SimTime(0,0)
 
         self.executor_coroutine:greenlet = None
 

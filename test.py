@@ -90,7 +90,7 @@ def test_fifo():
             for i in range(5):
                 data = self.fifo.read()
                 print(f"Consumer Read {data} at {SimSession.sim_time}")
-                SimModule.wait_time(SimTime(1))
+                SimModule.wait_time(SimTime(10))
     
     SimSession.reset()
     SimSession.init()
