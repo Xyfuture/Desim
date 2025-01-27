@@ -22,7 +22,7 @@ class SimSemaphore:
 
     def post(self):
         self.value += 1
-        self.free_ent.notify(SimTime(1))
+        self.free_ent.notify(SimTime(0))
 
     def in_use(self)->bool:
         return self.value <= 0

@@ -5,6 +5,8 @@ from Desim.Core import SimSession, SimModule, Event, SimTime
 from Desim.Sync import SimSemaphore
 import timeit
 
+from Desim.module.FIFO import FIFO
+
 def test_simulation():
     # Initialize simulation session
     SimSession.reset()
@@ -68,9 +70,39 @@ def test_semaphore():
     SimSession.scheduler.run()
 
 
+def test_fifo():
+    class FifoTest(SimModule):
+        def __init__(self):
+            super().__init__()
+
+            self.fifo = FIFO(3)
+            self.register_coroutine(self.producer)
+            self.register_coroutine(self.consumer)
+
+        def producer(self):
+
+            for i in range(5):
+                self.fifo.write(i)
+                print(f"Producer Write {i} at {SimSession.sim_time}")
+                SimModule.wait_time(SimTime(2))
+
+        def consumer(self):
+            for i in range(5):
+                data = self.fifo.read()
+                print(f"Consumer Read {data} at {SimSession.sim_time}")
+                SimModule.wait_time(SimTime(1))
+    
+    SimSession.reset()
+    SimSession.init()
+    module = FifoTest()
+    SimSession.scheduler.run()
+
+
 if __name__ == '__main__':
     # Run the test
     # test_semaphore()
-    execution_time =timeit.timeit(test_semaphore,number=1)
-    print(f"Execution: {execution_time} s")
+    # execution_time =timeit.timeit(test_semaphore,number=1)
+    # print(f"Execution: {execution_time} s")
     # test_simulation()
+
+    test_fifo()
