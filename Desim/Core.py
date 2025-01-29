@@ -300,6 +300,20 @@ class Scheduler:
             # 清空状态
             notified_event.clear_waiting_coroutine()
 
+    # 受限于初始化机制，目前动态初始化需要借助特殊的函数进行。
+    def dynamic_add_module(self, module:SimModule):
+        for coroutine in module._coroutines:
+            self.dynamic_add_coroutine(coroutine)
+
+    def dynamic_add_coroutine(self,coroutine:SimCoroutine):
+        # 手动执行类似初始化的操作
+        prev_executor_coroutine = self.executor_coroutine
+        self.executor_coroutine = greenlet.getcurrent()
+        coroutine.parent = greenlet.getcurrent()
+        coroutine.switch()
+        coroutine.parent = self.main_loop_coroutine
+        self.executor_coroutine = prev_executor_coroutine
+
 
 class SimSession:
     scheduler:Optional[Scheduler] = None
