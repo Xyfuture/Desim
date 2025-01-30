@@ -1,6 +1,6 @@
 from typing import Optional, Callable
 
-from Desim.Core import SimModule, Event
+from Desim.Core import SimModule, Event, SimTime
 from Desim.module.FIFO import FIFO
 
 
@@ -10,6 +10,7 @@ class PipeStage(SimModule):
 
         self.times:int = -1
         self.start_event = Event()
+        self.end_event = Event()
         self.register_coroutine(self.process)
 
         self.input_fifo_map:Optional[dict[FIFO]] = None
@@ -34,6 +35,8 @@ class PipeStage(SimModule):
                         break
             else:
                 assert False
+            
+            self.end_event.notify(SimTime(0))
 
     def config_handler(self,handler:Callable[[dict[FIFO],dict[FIFO]], bool],times:int):
         self.handler = handler
@@ -47,12 +50,12 @@ class PipeStage(SimModule):
 class PipeGraph:
     def __init__(self):
         self.stages_dict:dict[str,PipeStage] = {}  # 记录所有的 vertex
-        self.connection_next_dict:dict[str,list[str]] = {} # 记录 a->b  =>  dict[a] = b 这样的map
+        self.connection_next_dict:dict[str,list[str]] = {} # 记录 a->b  =>  dict[a] = b 这样的map 
         self.connection_prev_dict:dict[str,list[str]] = {} # 记录 a->  =>  dict[b] = a 这样的map
 
         self.edges_dict:dict[tuple[str,str],FIFO] = {} # 对于 a->b dict[(a,b)] = fifo
 
-
+        self.sink_stage:Optional[PipeStage] = None # 特殊的 stage 用于作为结束的stage
 
     def add_stages_by_dict(self,stages_dict:dict[str,PipeStage]):
         self.stages_dict.update(stages_dict)
@@ -60,8 +63,10 @@ class PipeGraph:
     def add_stage(self,stage:PipeStage,name:str):
         self.stages_dict[name] = stage
 
-    def add_edges_by_dict(self):
-        pass
+    def add_edges_by_list(self,edges_list:list[tuple[str,str,int,int]]):
+        # 一次性插入所有的 边 
+        for edge in edges_list:
+            self.add_edge(*edge)
 
     def add_edge(self,from_stage_name:str,to_stage_name:str,fifo_size:int,init_size:int=0):
         assert from_stage_name in self.stages_dict and to_stage_name in self.stages_dict
@@ -77,10 +82,30 @@ class PipeGraph:
         fifo = FIFO(fifo_size,init_size)
         self.edges_dict[(from_stage_name,to_stage_name)]=fifo
 
+    def add_edge_with_fifo(self,from_stage_name:str,to_stage_name:str,fifo:FIFO):
+        assert from_stage_name in self.stages_dict and to_stage_name in self.stages_dict
 
-    def add_edge_with_fifo(self):
-        pass
+        if from_stage_name not in self.connection_next_dict:
+            self.connection_next_dict[from_stage_name] = []
+        if to_stage_name not in self.connection_prev_dict:
+            self.connection_prev_dict[to_stage_name] = []
+
+        self.connection_next_dict[from_stage_name].append(to_stage_name)
+        self.connection_prev_dict[to_stage_name].append(from_stage_name)
+
+        self.edges_dict[(from_stage_name,to_stage_name)] = fifo 
 
     def check_connection(self)->bool:
         pass
+ 
+    # 设置开始和结束条件
+    def start_pipe_graph(self):
+        # 启动所有的 pipe stage
+        for name,stage in self.stages_dict.items():
+            stage.start_event.notify(SimTime(0))
+        
+    def wait_pipe_graph_finish(self):
+        assert self.sink_stage and self.sink_stage in list(self.stages_dict.values())
+        SimModule.wait(self.sink_stage.end_event)
+
 
