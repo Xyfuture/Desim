@@ -13,10 +13,10 @@ class PipeStage(SimModule):
         self.end_event = Event()
         self.register_coroutine(self.process)
 
-        self.input_fifo_map:Optional[dict[FIFO]] = None
-        self.output_fifo_map:Optional[dict[FIFO]] = None
+        self.input_fifo_map:Optional[dict[str,FIFO]] = {}
+        self.output_fifo_map:Optional[dict[str,FIFO]] = {}
 
-        self.handler:Optional[Callable[[dict[FIFO],dict[FIFO]], bool]] = None
+        self.handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]] = None
 
 
     def process(self):
@@ -45,7 +45,12 @@ class PipeStage(SimModule):
     def config_fifo(self,input_fifo_map:dict[FIFO],output_fifo_map:dict[FIFO]):
         self.input_fifo_map = input_fifo_map
         self.output_fifo_map = output_fifo_map
+    
+    def add_input_fifo(self,fifo_name:str,fifo:FIFO):
+        self.input_fifo_map[fifo_name] = fifo
 
+    def add_output_fifo(self,fifo_name:str,fifo:FIFO):
+        self.output_fifo_map[fifo_name] = fifo
 
 class PipeGraph:
     def __init__(self):
@@ -53,9 +58,9 @@ class PipeGraph:
         self.connection_next_dict:dict[str,list[str]] = {} # 记录 a->b  =>  dict[a] = b 这样的map 
         self.connection_prev_dict:dict[str,list[str]] = {} # 记录 a->  =>  dict[b] = a 这样的map
 
-        self.edges_dict:dict[tuple[str,str],FIFO] = {} # 对于 a->b dict[(a,b)] = fifo
+        self.edges_dict:dict[tuple[str,str],tuple[str,FIFO]] = {} # 对于 a->b dict[(a,b)] = fifo
 
-        self.sink_stage:Optional[PipeStage] = None # 特殊的 stage 用于作为结束的stage
+        self.sink_stage_name:Optional[str] = None # 特殊的 stage 用于作为结束的stage
 
     def add_stages_by_dict(self,stages_dict:dict[str,PipeStage]):
         self.stages_dict.update(stages_dict)
@@ -68,7 +73,7 @@ class PipeGraph:
         for edge in edges_list:
             self.add_edge(*edge)
 
-    def add_edge(self,from_stage_name:str,to_stage_name:str,fifo_size:int,init_size:int=0):
+    def add_edge(self,from_stage_name:str,to_stage_name:str,fifo_name:str,fifo_size:int,init_size:int=0):
         assert from_stage_name in self.stages_dict and to_stage_name in self.stages_dict
         if from_stage_name not in self.connection_next_dict:
             self.connection_next_dict[from_stage_name] = []
@@ -80,9 +85,9 @@ class PipeGraph:
 
         # 构建fifo
         fifo = FIFO(fifo_size,init_size)
-        self.edges_dict[(from_stage_name,to_stage_name)]=fifo
+        self.edges_dict[(from_stage_name,to_stage_name)]=(fifo_name,fifo)
 
-    def add_edge_with_fifo(self,from_stage_name:str,to_stage_name:str,fifo:FIFO):
+    def add_edge_with_fifo(self,from_stage_name:str,to_stage_name:str,fifo_name:str,fifo:FIFO):
         assert from_stage_name in self.stages_dict and to_stage_name in self.stages_dict
 
         if from_stage_name not in self.connection_next_dict:
@@ -93,7 +98,7 @@ class PipeGraph:
         self.connection_next_dict[from_stage_name].append(to_stage_name)
         self.connection_prev_dict[to_stage_name].append(from_stage_name)
 
-        self.edges_dict[(from_stage_name,to_stage_name)] = fifo 
+        self.edges_dict[(from_stage_name,to_stage_name)] = (fifo_name,fifo)
 
     def check_connection(self)->bool:
         pass
@@ -105,7 +110,20 @@ class PipeGraph:
             stage.start_event.notify(SimTime(0))
         
     def wait_pipe_graph_finish(self):
-        assert self.sink_stage and self.sink_stage in list(self.stages_dict.values())
-        SimModule.wait(self.sink_stage.end_event)
+        assert self.sink_stage_name in self.stages_dict
+        sink_stage = self.stages_dict[self.sink_stage_name]
+        SimModule.wait(sink_stage.end_event)
 
+    def config_sink_stage_name(self,name:str):
+        self.sink_stage_name = name
 
+    def build_graph(self):
+        # 为 stage 构建其需要的 fifo
+        for stage_name,edge_fifo in self.edges_dict.items():
+            from_stage_name,to_stage_name = stage_name
+            fifo_name,fifo = edge_fifo
+
+            self.stages_dict[from_stage_name].add_output_fifo(fifo_name,fifo)
+            self.stages_dict[to_stage_name].add_input_fifo(fifo_name,fifo)
+
+            
