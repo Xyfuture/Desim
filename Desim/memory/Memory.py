@@ -50,29 +50,30 @@ class DepMemory(SimModule):
             # 如果写了一个 有 tag 的地址, 那么要抛出异常
             
             for addr,write_req_deque in self.pending_write_reqs.items():
-                for req in write_req_deque:
-                    if req.check_write_tag: 
+                for write_req in write_req_deque:
+                    if write_req.check_write_tag: 
                         if self.memory_tag[addr] != 0:
                             assert False, 'can not write data'
                         else:
-                            self.memory_data[addr] = req.data
+                            self.memory_data[addr] = write_req.data
                             self.memory_tag[addr] += 1 
                     else:
-                        self.memory_data[addr] = req.data
+                        self.memory_data[addr] = write_req.data
                         self.memory_tag[addr] += 1 
                     
-                    req.write_finish_event.notify(SimTime(1))
+                    write_req.write_finish_event.notify(SimTime(1))
                 
+                write_req_deque.clear()
                 
                 # 处理相应的 waiting req
                 finish_waiting_reqs = []
                 for waiting_req in self.waiting_read_reqs[addr]:
                     if self.memory_tag[addr] == waiting_req.expect_tag:
-                        req.data = self.memory_data[addr]
-                        if req.clear:
+                        waiting_req.data = self.memory_data[addr]
+                        if waiting_req.clear:
                             self.memory_tag[addr] = 0
-                        finish_waiting_reqs.append(req)
-                        req.read_finish_event.notify(SimTime(1))
+                        finish_waiting_reqs.append(waiting_req)
+                        waiting_req.read_finish_event.notify(SimTime(1))
                 
                 for finish_req in finish_waiting_reqs:
                     self.waiting_read_reqs[addr].remove(finish_req)
@@ -81,16 +82,16 @@ class DepMemory(SimModule):
                     
             # 最后处理read 操作, 保证 RAW 的正常 
             for addr,read_req_deque in self.pending_read_reqs.items():
-                for req in read_req_deque:
-                    if self.memory_tag[addr] == req.expect_tag :
-                        req.data = self.memory_data[addr]
-                        if req.clear:
+                for write_req in read_req_deque:
+                    if self.memory_tag[addr] == write_req.expect_tag :
+                        write_req.data = self.memory_data[addr]
+                        if write_req.clear:
                             self.memory_tag[addr] = 0 
-                        req.read_finish_event.notify(SimTime(1))
+                        write_req.read_finish_event.notify(SimTime(1))
                     else:
                         # 进入 waiting 状态
-                        self.waiting_read_reqs[addr].append(req)
-
+                        self.waiting_read_reqs[addr].append(write_req)
+                read_req_deque.clear()
 
 
     def shcedule_pending_read_reqs(self):
@@ -136,6 +137,7 @@ class DepMemoryPort():
             port=self,
             command='read',
             addr=addr,
+            read_finish_event=self.read_finish_event,
             expect_tag=tag_value,
             clear=clear
         )
