@@ -10,12 +10,12 @@ class DepMemoryRequest:
     port:DepMemoryPort 
     command:Literal['write','read']
     addr:int 
-    data:any
+    data:any = None
     clear:bool = False # 读完之后,最后进行进行 clear 操作
     expect_tag:int = 0 
     read_finish_event:Optional[Event] = None
+    write_finish_event:Optional[Event] = None 
     check_write_tag:bool = True
-
 
 
 class DepMemory(SimModule):
@@ -25,15 +25,15 @@ class DepMemory(SimModule):
     def __init__(self):
         super().__init__()
 
-        self.memory_data:dict[int,any] = {}
-        self.memory_tag:dict[int,int] = {}
+        self.memory_data:dict[int,any] = defaultdict(None)
+        self.memory_tag:dict[int,int] = defaultdict(int)
 
         # 仅仅是该周期到来的 request ,在这一周期必须被处理 
         # 要么成功返回, 要么进入 waiting 状态 等待后续的触发
-        self.pending_write_reqs:defaultdict[int,deque[DepMemoryRequest]] = {}
-        self.pending_read_reqs:defaultdict[int,deque[DepMemoryRequest]] = {} 
+        self.pending_write_reqs:defaultdict[int,deque[DepMemoryRequest]] = defaultdict(deque)
+        self.pending_read_reqs:defaultdict[int,deque[DepMemoryRequest]] = defaultdict(deque) 
 
-        self.waiting_read_reqs:defaultdict[int,deque[DepMemoryRequest]] = {} 
+        self.waiting_read_reqs:defaultdict[int,deque[DepMemoryRequest]] = defaultdict(deque)
 
         # 可能会发生的事件
         self.process_trigger_event = Event()
@@ -60,6 +60,8 @@ class DepMemory(SimModule):
                     else:
                         self.memory_data[addr] = req.data
                         self.memory_tag[addr] += 1 
+                    
+                    req.write_finish_event.notify(SimTime(1))
                 
                 
                 # 处理相应的 waiting req
@@ -100,12 +102,17 @@ class DepMemory(SimModule):
 
     def handle_read_request(self,read_req:DepMemoryRequest):
         # for port use 
+        if read_req.addr not in self.pending_read_reqs:
+            self.pending_read_reqs[read_req.addr] = deque()
         self.pending_read_reqs[read_req.addr].append(read_req)
         self.process_trigger_event.notify(SimTime(1))
 
     def handle_write_request(self,write_req:DepMemoryRequest):
+        if write_req.addr not in self.pending_read_reqs:
+            self.pending_write_reqs[write_req.addr] = deque()
         self.pending_write_reqs[write_req.addr].append(write_req)
         self.process_trigger_event.notify(SimTime(1))
+
 
 class DepMemoryPort():
     def __init__(self):
@@ -113,10 +120,18 @@ class DepMemoryPort():
         self.dep_memory:Optional[DepMemory] = None
         
         self.read_finish_event = Event()
+        self.write_finish_event = Event()
         
         # 记录一下 是否正在读取或者写入 只允许一个并发的操作 
+        self.read_busy:bool = False
+        self.write_busy:bool = False
 
     def read(self,addr:int,tag_value:int=0,clear:bool=False)->any:
+        if self.read_busy:
+            assert False,'read port busy'
+        
+        self.read_busy = True
+
         read_req = DepMemoryRequest(
             port=self,
             command='read',
@@ -128,16 +143,31 @@ class DepMemoryPort():
         self.dep_memory.handle_read_request(read_req)
         SimModule.wait(self.read_finish_event)
 
+        self.read_busy = False
         return read_req.data
 
     def write(self,addr:int,data:any,check_write_tag:bool=True):
+        
+        if self.write_busy:
+            assert False,'write port busy'
+        
+        self.write_busy = True
+
         write_req = DepMemoryRequest(
             port=self,
             command='write',
             addr=addr,
             data=data,
-            check_write_tag=check_write_tag
+            check_write_tag=check_write_tag,
+            write_finish_event=self.write_finish_event
         )
         
         self.dep_memory.handle_write_request(write_req)
+        SimModule.wait(self.write_finish_event)
 
+        self.write_busy = False
+
+    
+
+    def config_dep_memory(self,dep_memory:DepMemory):
+        self.dep_memory = dep_memory
