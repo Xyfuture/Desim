@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Callable, Optional, Deque
+from typing import Callable, Optional, Deque, Literal
 from greenlet import greenlet
 from sortedcontainers import SortedList
 from Desim.Utils import UniquePriorityQueue, ClassProperty, UniqueDeque
@@ -239,13 +239,17 @@ class Scheduler:
         self.initialize_coroutine = greenlet(self.initialize)
         self.main_loop_coroutine = greenlet(self.main_loop)
 
+        self.status:Literal['uninitialized','initializing','initialized','running','finished'] = 'uninitialized'
+
 
     def run(self):
         self.initialize_coroutine.switch()
+        self.status = 'initialized'
         self.main_loop_coroutine.switch()
-
+        self.status = 'finished'
 
     def initialize(self):
+        self.status = 'initializing'
         self.executor_coroutine = greenlet.getcurrent()
         # 初始化所有的 coroutine, 将所有的coroutine放入到 runnable queue中
         for module in SimSession.sim_modules:
@@ -256,6 +260,7 @@ class Scheduler:
 
 
     def main_loop(self):
+        self.status = 'running'
         self.executor_coroutine = greenlet.getcurrent()
 
         # 执行主体的循环，直到所有的coroutine都执行完毕，才会退出
@@ -308,12 +313,11 @@ class Scheduler:
 
     def dynamic_add_coroutine(self,coroutine:SimCoroutine):
         # 手动执行类似初始化的操作
-        prev_executor_coroutine = self.executor_coroutine
-        self.executor_coroutine = greenlet.getcurrent()
-        coroutine.parent = greenlet.getcurrent()
-        coroutine.switch()
-        coroutine.parent = self.main_loop_coroutine
-        self.executor_coroutine = prev_executor_coroutine
+        if self.status == 'running':
+            coroutine.parent = self.main_loop_coroutine
+            self.runnable_queue.append(coroutine)
+        else:
+            assert False
 
 
 class SimSession:
