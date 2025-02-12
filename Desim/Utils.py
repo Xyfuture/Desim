@@ -1,10 +1,11 @@
-from typing import TypeVar, Generic, Callable
+from typing import TypeVar, Generic, Callable, Deque, Set
 from sortedcontainers import SortedList
+from collections import deque 
 
 # 定义一个泛型 T
 T = TypeVar("T")
 
-class PriorityQueue(Generic[T]):
+class UniquePriorityQueue(Generic[T]):
     def __init__(self):
         """
         初始化优先级队列，元素按照 key 提取的优先级排序。
@@ -96,6 +97,40 @@ class PriorityQueue(Generic[T]):
         """
         return len(self._queue) > 0
 
+class UniqueDeque(Generic[T]):
+    def __init__(self) -> None:
+        self.deque: Deque[T] = deque()
+        self.set: Set[T] = set()
+
+    def append(self, item: T) -> None:
+        if item not in self.set:
+            self.set.add(item)
+            self.deque.append(item)
+
+    def appendleft(self, item: T) -> None:
+        if item not in self.set:
+            self.set.add(item)
+            self.deque.appendleft(item)
+
+    def pop(self) -> T:
+        item = self.deque.pop()
+        self.set.remove(item)
+        return item
+
+    def popleft(self) -> T:
+        item = self.deque.popleft()
+        self.set.remove(item)
+        return item
+
+    def __contains__(self, item: T) -> bool:
+        return item in self.set
+
+    def __len__(self) -> int:
+        return len(self.deque)
+
+    def __repr__(self) -> str:
+        return repr(self.deque)
+
 
 
 U = TypeVar('U')  # 改为 U，表示描述符的泛型类型
@@ -132,7 +167,7 @@ if __name__ == "__main__":
             return f"Task(name={self.name}, priority={self.priority})"
 
     # 创建一个 PriorityQueue[Task]，从 Task 中提取优先级
-    pq = PriorityQueue[Task]()
+    pq = UniquePriorityQueue[Task]()
 
     pq.append("Task 1")
     pq.append("Task 2")

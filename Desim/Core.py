@@ -4,7 +4,7 @@ from collections import deque
 from typing import Callable, Optional, Deque
 from greenlet import greenlet
 from sortedcontainers import SortedList
-from Desim.Utils import PriorityQueue,ClassProperty
+from Desim.Utils import UniquePriorityQueue, ClassProperty, UniqueDeque
 
 
 class SimTime:
@@ -223,11 +223,11 @@ class Event:
 
 class Scheduler:
     def __init__(self):
-        self.runnable_queue:deque = deque()
+        self.runnable_queue:UniqueDeque[SimCoroutine] = UniqueDeque()
         self.waiting_queue = None
         self.running_coroutine = None
 
-        self.event_queue:PriorityQueue[Event] = PriorityQueue()
+        self.event_queue:UniquePriorityQueue[Event] = UniquePriorityQueue()
 
         # self.notified_events:deque[Event] = deque()
 
@@ -247,39 +247,40 @@ class Scheduler:
 
     def initialize(self):
         self.executor_coroutine = greenlet.getcurrent()
-        # 初始化所有的 coroutine
+        # 初始化所有的 coroutine, 将所有的coroutine放入到 runnable queue中
         for module in SimSession.sim_modules:
             for coroutine in module._coroutines:
                 # 需要指定 parent，这样 sim module的 Coroutine执行结束后，会回到mainloop 执行其他的 Coroutine
-                # 如果Coroutine在initial阶段结束，就直接回到initialize中
-                coroutine.parent = self.initialize_coroutine
-                coroutine.switch()
                 coroutine.parent = self.main_loop_coroutine
-        pass
+                self.runnable_queue.append(coroutine)
+
 
     def main_loop(self):
         self.executor_coroutine = greenlet.getcurrent()
 
-        # 从 runnable queue 中取出一个 coroutine 运行
+        # 执行主体的循环，直到所有的coroutine都执行完毕，才会退出
         while True:
 
-            # 遍历 runnable queue 中的线程
+            # 类似于systemc 的 evaluate 阶段
+            # 遍历 runnable queue 中的线程，取出里面所有可跑的进程，依次执行
             while self.runnable_queue:
                 coroutine = self.runnable_queue.pop()
                 coroutine.switch()
-                # 支持 delta cycle 功能  在这里进行delta cycle 的更新工作
-                self.handle_notified_events(self.sim_time) # 处理 delta cycle 的event 实现数据的更新
 
 
-            # 当前时间点运行结束，更新时间 advance time
-            # 检查 event queue，找到时间最小的 event，作为新的时间，然后更新runnable queue，之后运行
+            # 进入 update 阶段， 更新delta cycle 或者 sim cycle 推动时间前进
+            # 类似 systemc 的 update 阶段
+
+                # # 支持 delta cycle 功能  在这里进行delta cycle 的更新工作
+                # self.handle_notified_events(self.sim_time) # 处理 delta cycle 的event 实现数据的更新
+
+            # 检查 event queue，找到时间最小的 event，，作为新的时间，然后更新runnable queue，之后运行
             if self.event_queue:
                 # 更新时间
                 assert self.event_queue.peek().notify_time > self.sim_time
                 self.sim_time = self.event_queue.peek().notify_time
 
                 self.handle_notified_events(self.sim_time)
-
             else:
                 # 没有新的event了，退 main loop
                 break
