@@ -73,12 +73,12 @@ class SimTime:
         if isinstance(other,SimTime):
             if self.cycle == 0 or other.cycle == 0:
                 new_cycle = self.cycle + other.cycle
-                new_delat_cycle = self.delta_cycle + other.delta_cycle
+                new_delta_cycle = self.delta_cycle + other.delta_cycle
             else:
                 new_cycle = self.cycle + other.cycle 
-                new_delat_cycle = 0 
+                new_delta_cycle = 0
             
-            return SimTime(new_cycle,new_delat_cycle)
+            return SimTime(new_cycle,new_delta_cycle)
         return NotImplemented
 
 
