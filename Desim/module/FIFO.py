@@ -2,7 +2,7 @@ from typing import Optional
 from collections import deque
 
 from Desim.Core import Event, SimTime, SimModule
-from Desim.Sync import SimSemaphore
+from Desim.Sync import SimDelaySemaphore, SimSemaphore
 
 
 class FIFO:
@@ -45,3 +45,21 @@ class FIFO:
         if self.empty_semaphore.get_value() != 0:
             SimModule.wait(self.is_empty_event)
 
+
+
+class DelayFIFO(FIFO):
+    # 支持延迟写入的功能 
+    def __init__(self,fifo_size:int,init_size:int=0):
+        super().__init__(fifo_size,init_size)
+        self.empty_semaphore = SimDelaySemaphore(init_size)
+
+        
+
+    def write(self,data:any,delay_time:SimTime):
+        self.full_semaphore.wait()
+        self.empty_semaphore.post(delay_time)
+
+        if self.full_semaphore.get_value() == 0:
+            self.is_full_event.notify(SimTime(0))
+        
+        self.fifo_data.append(data)
