@@ -65,9 +65,38 @@ class TestPipe(SimModule):
 
 
 
+class TestLinearPipe(SimModule):
+    def __init__(self):
+        super().__init__()
+
+        stage_a = PipeStage()
+        stage_b = PipeStage()
+        stage_c = PipeStage()
+
+        stage_a.config_handler(a_handler,-1)
+        stage_b.config_handler(b_handler,-1)
+        stage_c.config_handler(c_handler,-1)
+
+        self.pipe_line = PipeGraph.construct_linear_pipeline(
+            ['a','b','c'],[stage_a,stage_b,stage_c]
+        )
+
+        self.register_coroutine(self.process)
+
+    def process(self):
+        SimModule.wait_time(SimTime(1))
+        print(f"in process at {SimSession.sim_time} start pipe")
+        self.pipe_line.start_pipe_graph()
+        self.pipe_line.wait_pipe_graph_finish()
+
+        print(f'graph finish at time {SimSession.sim_time}')
+
+
+
 if __name__ == "__main__":
     SimSession.reset()
     SimSession.init()
     
-    module = TestPipe()
+    # module = TestPipe()
+    module = TestLinearPipe()
     SimSession.scheduler.run()

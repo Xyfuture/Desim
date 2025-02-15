@@ -126,4 +126,21 @@ class PipeGraph:
             self.stages_dict[from_stage_name].add_output_fifo(fifo_name,fifo)
             self.stages_dict[to_stage_name].add_input_fifo(fifo_name,fifo)
 
+    @staticmethod
+    def construct_linear_pipeline(stage_names:list[str],stages:list[PipeStage]):
+        # 最简单的方式构建一个 线性的,首尾连接的pipeline
+
+        pipe_graph = PipeGraph()
+
+        stages_dict = dict(zip(stage_names,stages))
+        pipe_graph.add_stages_by_dict(stages_dict)
+
+        # 构建连接关系
+        for i in range(len(stage_names) - 1):
+            pipe_graph.add_edge(stage_names[i],stage_names[i+1],f"{stage_names[i]}-{stage_names[i+1]}",1,0)
+
+        pipe_graph.build_graph()
+        pipe_graph.config_sink_stage_name(stage_names[-1])
+
+        return pipe_graph
             
