@@ -20,23 +20,35 @@ class UniquePriorityQueue(Generic[T]):
         添加一个元素到队列中，如果元素已经存在，则忽略。
         :param item: 待加入的元素
         """
+        if __debug__:
+            self.valid_check()
+
         if item in self._set:
             print(f"{item} 已存在，忽略添加。")
             return
         self._queue.add(item)
         self._set.add(item)
 
+        if __debug__:
+            self.valid_check()
+
     def append(self, item: T):
         """
         添加一个元素到队列中，如果元素已经存在，重新加入，对优先级进行重新排序。
         :param item: 待加入的元素
         """
+        if __debug__:
+            self.valid_check()
+
         if item in self._set:
-            self.remove(item)
+            self.remove(item) # 首先删除， 之后再次插入就是新的order了
             self.add(item)
         else:
             self._queue.add(item)
             self._set.add(item)
+
+        if __debug__:
+            self.valid_check()
 
         # print(f"添加: {item}，优先级: {self._key(item)}")
 
@@ -45,11 +57,17 @@ class UniquePriorityQueue(Generic[T]):
         删除队列中的某个元素。
         :param item: 待删除的元素
         """
+        if __debug__:
+            self.valid_check()
+
         if item not in self._set:
             print(f"{item} 不在队列中，无法删除。")
             return
         self._queue.remove(item)
         self._set.remove(item)
+
+        if __debug__:
+            self.valid_check()
         # print(f"已删除: {item}")
 
     def update(self, old_item: T, new_item: T):
@@ -70,10 +88,17 @@ class UniquePriorityQueue(Generic[T]):
         弹出优先级最高的元素。
         :return: 优先级最高的元素
         """
+        if __debug__:
+            self.valid_check()
+
         if not self._queue:
             raise IndexError("优先级队列为空！")
         item = self._queue.pop(0)  # 弹出优先级最高的元素
         self._set.remove(item)
+
+        if __debug__:
+            self.valid_check()
+
         return item
 
     def peek(self) -> T:
@@ -96,6 +121,26 @@ class UniquePriorityQueue(Generic[T]):
         当队列非空时返回 True，空时返回 False。
         """
         return len(self._queue) > 0
+
+    def valid_check(self)->bool:
+        # True for valid / False for invalid
+        for item in self._queue:
+            if item not in self._set:
+                assert False
+        for item in self._set:
+            if item not in self._queue:
+                assert False
+        tmp_set = set()
+        for item in self._queue:
+            if item in tmp_set:
+                assert False
+            tmp_set.add(item)
+        self._queue._check()
+        return True
+
+    def __contains__(self, item):
+        return item in self._set
+
 
 class UniqueDeque(Generic[T]):
     def __init__(self) -> None:

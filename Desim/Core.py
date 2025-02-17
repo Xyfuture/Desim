@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from distutils.dep_util import newer
 from typing import Callable, Optional, Deque, Literal
 from greenlet import greenlet
 from sortedcontainers import SortedList
@@ -82,6 +83,18 @@ class SimTime:
         return NotImplemented
 
 
+    def __sub__(self, other):
+        if isinstance(other,SimTime):
+            # delta cycle 是不能减少的
+            if other.cycle == 0 :
+                new_delta_cycle = self.delta_cycle
+            else:
+                new_delta_cycle = 0
+            new_cycle = self.cycle - other.cycle
+            return SimTime(new_cycle,new_delta_cycle)
+        return NotImplemented
+
+
 class SimCoroutine(greenlet):
     def __init__(self,func:Callable):
         super(SimCoroutine, self).__init__(func)
@@ -156,9 +169,11 @@ class Event:
     def notify(self,delay_time:SimTime):
         # 调用此函数的时候将 event 插入到
         # 这个 time 是delay time
-
-        self.notify_time = SimSession.sim_time + delay_time
-        SimSession.scheduler.event_queue.append(self)
+        # TODO 这里存在一个bug 如果这个event已经在 queue中了, 如果直接更新了 notify time queue就出错了, 会出现问题
+        # self.notify_time = SimSession.sim_time + delay_time # 就是这行,不知直接暴力的更新
+        # 简单处理可以先删除, 然后在加进去
+        # SimSession.scheduler.event_queue.append(self)
+        SimSession.scheduler.insert_event(self,SimSession.sim_time + delay_time)
 
     def wait(self,*args,**kwargs):
         SimModule.wait(*(self,*args),**kwargs)
@@ -195,26 +210,34 @@ class Event:
         self.waiting_coroutines = set()
 
     def __lt__(self, other):
+        # if self.notify_time == other.notify_time:
+        #     return id(self) < id(other)
         return self.notify_time < other.notify_time
 
     def __gt__(self, other):
+        # if self.notify_time == other.notify_time:
+        #     return id(self) > id(other)
         return self.notify_time > other.notify_time
 
 
     def __eq__(self, other):
-        return self.notify_time == other.notify_time
+        return self.notify_time == other.notify_time and (id(self) == id(other))
 
 
     def __le__(self, other):
+        # if self.notify_time == other.notify_time:
+        #     return id(self) <= id(other)
         return self.notify_time <= other.notify_time
 
 
     def __ge__(self, other):
+        # if self.notify_time == other.notify_time:
+        #     return id(self) >= id(other)
         return self.notify_time >= other.notify_time
 
 
     def __ne__(self, other):
-        return self.notify_time != other.notify_time
+        return self.notify_time != other.notify_time or (id(self) != id(other))
 
     def __hash__(self):
         return id(self)
@@ -305,6 +328,16 @@ class Scheduler:
 
             # 清空状态
             notified_event.clear_waiting_coroutine()
+
+    def insert_event(self,event:Event,new_notify_time:SimTime):
+        if event in self.event_queue:
+            self.event_queue.remove(event)
+            event.notify_time = new_notify_time
+            self.event_queue.add(event)
+        else:
+            event.notify_time = new_notify_time
+            self.event_queue.add(event)
+
 
     # 受限于初始化机制，目前动态初始化需要借助特殊的函数进行。
     def dynamic_add_module(self, module:SimModule):

@@ -18,6 +18,9 @@ class SimSemaphore:
         return True
 
     def wait(self):
+        # 能实现多个coroutine wait时，资源不足，多个coroutine都进入等待状态
+        # value会一直保持0， 因为提前进入wait了
+        # 唤醒的顺序是不能保证的， systemc 原版中也是随机进行唤醒的
         while self.in_use():
             SimModule.wait(self.free_ent)
         self.value -= 1
@@ -32,6 +35,8 @@ class SimSemaphore:
 
 
 class EventQueue(SimModule):
+    # 实现一个类似 systemc中 event queue 的操作
+    # 不同普通的event 只有一个 notify time， 这个queue有一系列notify time， 依次进行notify 操作
     def __init__(self):
         super().__init__()
 
@@ -41,7 +46,8 @@ class EventQueue(SimModule):
         
         self.update_event = Event()
 
-        self.register_coroutine(self.process)
+        self.register_coroutine(self.update)
+        self.register_coroutine(self.post_event)
 
     def next_notify(self,delay_time:SimTime):
         self.notify_time_queue.append(SimSession.sim_time + delay_time)
@@ -55,12 +61,13 @@ class EventQueue(SimModule):
             if self.notify_time_queue:
                 delay_time = self.notify_time_queue.peek() - SimSession.sim_time
                 self.event.notify(delay_time)
+                # TODO 这里存在一个bug 如果这个event已经在 queue中了, 如果直接更新了 notify time queue就出错了, 会出现问题
         
     def post_event(self):
         # event 被触发之后进行的操作
         while True:
             SimModule.wait(self.event)
-            assert self.notify_time_queue.peek() == SimSession.sim_time
+            assert self.notify_time_queue.peek().cycle == SimSession.sim_time.cycle
             self.notify_time_queue.pop()
             self.update_event.notify(SimTime(0))
 
@@ -73,6 +80,8 @@ class DelayHandler(SimModule):
         self.trigger_ent = self.event_queue.event
 
         self.callback = callback
+
+        self.register_coroutine(self.process)
 
     def delay_call(self,delay_time:SimTime):
         self.event_queue.next_notify(delay_time)
