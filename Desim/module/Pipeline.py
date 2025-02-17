@@ -1,6 +1,6 @@
 from typing import Optional, Callable
 
-from Desim.Core import SimModule, Event, SimTime
+from Desim.Core import SimModule, Event, SimTime, SimSession
 from Desim.module.FIFO import FIFO
 
 
@@ -51,6 +51,14 @@ class PipeStage(SimModule):
 
     def add_output_fifo(self,fifo_name:str,fifo:FIFO):
         self.output_fifo_map[fifo_name] = fifo
+
+    @staticmethod
+    def dynamic_create():
+        pipe_stage = PipeStage()
+        SimSession.scheduler.dynamic_add_module(pipe_stage)
+
+        return pipe_stage
+
 
 class PipeGraph:
     def __init__(self):

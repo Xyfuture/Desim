@@ -45,6 +45,12 @@ class FIFO:
         if self.empty_semaphore.get_value() != 0:
             SimModule.wait(self.is_empty_event)
 
+    def is_empty(self)->bool:
+        return self.empty_semaphore.get_value() == 0
+
+    def is_full(self)->bool:
+        return self.full_semaphore.get_value() == 0
+
 
 
 class DelayFIFO(FIFO):
