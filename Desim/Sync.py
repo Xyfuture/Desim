@@ -50,7 +50,7 @@ class EventQueue(SimModule):
         self.register_coroutine(self.post_event)
 
     def next_notify(self,delay_time:SimTime):
-        self.notify_time_queue.append(SimSession.sim_time + delay_time)
+        self.notify_time_queue.add(SimSession.sim_time + delay_time)
         self.update_event.notify(SimTime(0))
 
     
@@ -61,8 +61,7 @@ class EventQueue(SimModule):
             if self.notify_time_queue:
                 delay_time = self.notify_time_queue.peek() - SimSession.sim_time
                 self.event.notify(delay_time)
-                # TODO 这里存在一个bug 如果这个event已经在 queue中了, 如果直接更新了 notify time queue就出错了, 会出现问题
-        
+
     def post_event(self):
         # event 被触发之后进行的操作
         while True:
