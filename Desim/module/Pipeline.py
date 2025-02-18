@@ -1,6 +1,7 @@
 from typing import Optional, Callable
 
 from Desim.Core import SimModule, Event, SimTime, SimSession
+from Desim.Sync import SimSemaphore
 from Desim.module.FIFO import FIFO
 
 
@@ -9,8 +10,12 @@ class PipeStage(SimModule):
         super().__init__()
 
         self.times:int = time
-        self.start_event = Event()
-        self.end_event = Event()
+        # self.start_event = Event()
+        # self.end_event = Event()
+
+        self.start_semaphore = SimSemaphore(0)
+        self.end_semaphore = SimSemaphore(0)
+
         self.register_coroutine(self.process)
 
         self.input_fifo_map:Optional[dict[str,FIFO]] = {}
@@ -22,7 +27,8 @@ class PipeStage(SimModule):
     def process(self):
         # 两种模式，一种是 循环执行指定的次数，另一种是 无限执行下去
         while True:
-            SimModule.wait(self.start_event)
+            # SimModule.wait(self.start_event)
+            self.start_semaphore.wait()
 
             if self.times == -1 :
                 # run until mode
@@ -36,7 +42,8 @@ class PipeStage(SimModule):
             else:
                 assert False
             
-            self.end_event.notify(SimTime(0))
+            # self.end_event.notify(SimTime(0))
+            self.end_semaphore.post()
 
     def config_handler(self,handler:Callable[[dict[FIFO],dict[FIFO]], bool],times:int):
         self.handler = handler
@@ -68,7 +75,7 @@ class PipeGraph:
 
         self.edges_dict:dict[tuple[str,str],tuple[str,FIFO]] = {} # 对于 a->b dict[(a,b)] = fifo
 
-        self.sink_stage_name:Optional[str] = None # 特殊的 stage 用于作为结束的stage
+        self.sink_stages_name:list[str] = [] # 特殊的 stage 用于作为结束的stage
 
     def add_stages_by_dict(self,stages_dict:dict[str,PipeStage]):
         self.stages_dict.update(stages_dict)
@@ -115,15 +122,19 @@ class PipeGraph:
     def start_pipe_graph(self):
         # 启动所有的 pipe stage
         for name,stage in self.stages_dict.items():
-            stage.start_event.notify(SimTime(0))
-        
-    def wait_pipe_graph_finish(self):
-        assert self.sink_stage_name in self.stages_dict
-        sink_stage = self.stages_dict[self.sink_stage_name]
-        SimModule.wait(sink_stage.end_event)
+            # stage.start_event.notify(SimTime(0))
+            stage.start_semaphore.post()
 
-    def config_sink_stage_name(self,name:str):
-        self.sink_stage_name = name
+
+    def wait_pipe_graph_finish(self):
+        for stage_name in self.sink_stages_name:
+            assert stage_name in self.stages_dict
+            sink_stage = self.stages_dict[stage_name]
+            sink_stage.end_semaphore.wait()
+
+
+    def config_sink_stage_names(self,names:list[str]):
+        self.sink_stages_name = names
 
     def build_graph(self):
         # 为 stage 构建其需要的 fifo
@@ -148,7 +159,7 @@ class PipeGraph:
             pipe_graph.add_edge(stage_names[i],stage_names[i+1],f"{stage_names[i]}-{stage_names[i+1]}",1,0)
 
         pipe_graph.build_graph()
-        pipe_graph.config_sink_stage_name(stage_names[-1])
+        pipe_graph.config_sink_stage_names([stage_names[-1]])
 
         return pipe_graph
             

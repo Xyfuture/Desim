@@ -30,9 +30,7 @@ def build_pipe_graph():
     b_pipe_stage = PipeStage()
     c_pipe_stage = PipeStage()
 
-    a_pipe_stage.config_handler(a_handler,-1)
-    b_pipe_stage.config_handler(b_handler,-1)
-    c_pipe_stage.config_handler(c_handler,-1)
+
 
     graph.add_stage(a_pipe_stage,'a')
     graph.add_stage(b_pipe_stage,'b')
@@ -42,7 +40,7 @@ def build_pipe_graph():
     graph.add_edge('b','c','b-c',1,0)
 
     graph.build_graph()
-    graph.config_sink_stage_name('c')
+    graph.config_sink_stage_names(['c'])
     return graph
 
 
