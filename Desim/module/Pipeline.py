@@ -45,7 +45,7 @@ class PipeStage(SimModule):
             # self.end_event.notify(SimTime(0))
             self.end_semaphore.post()
 
-    def config_handler(self,handler:Callable[[dict[FIFO],dict[FIFO]], bool],times:int):
+    def config_handler(self,handler:Callable[[dict[str,FIFO],dict[str,FIFO]], bool],times:int):
         self.handler = handler
         self.times = times
 
