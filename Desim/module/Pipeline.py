@@ -5,10 +5,10 @@ from Desim.module.FIFO import FIFO
 
 
 class PipeStage(SimModule):
-    def __init__(self):
+    def __init__(self,handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]]=None,time:int=-1):
         super().__init__()
 
-        self.times:int = -1
+        self.times:int = time
         self.start_event = Event()
         self.end_event = Event()
         self.register_coroutine(self.process)
@@ -16,7 +16,7 @@ class PipeStage(SimModule):
         self.input_fifo_map:Optional[dict[str,FIFO]] = {}
         self.output_fifo_map:Optional[dict[str,FIFO]] = {}
 
-        self.handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]] = None
+        self.handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]] = handler
 
 
     def process(self):
@@ -53,8 +53,8 @@ class PipeStage(SimModule):
         self.output_fifo_map[fifo_name] = fifo
 
     @staticmethod
-    def dynamic_create():
-        pipe_stage = PipeStage()
+    def dynamic_create(handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]]=None, times:int=-1):
+        pipe_stage = PipeStage(handler,times)
         SimSession.scheduler.dynamic_add_module(pipe_stage)
 
         return pipe_stage

@@ -59,9 +59,10 @@ class DelayFIFO(FIFO):
         super().__init__(fifo_size,init_size)
         self.empty_semaphore = SimDelaySemaphore(init_size)
 
-        
 
-    def write(self,data:any,delay_time:SimTime):
+
+
+    def delay_write(self,data:any,delay_time:SimTime):
         self.full_semaphore.wait()
         self.empty_semaphore.post(delay_time)
 
