@@ -14,7 +14,7 @@ class TestDelayFifo(SimModule):
 
     def producer(self):
         for i in range(10):
-            self.delay_fifo.write(i,SimTime(2))
+            self.delay_fifo.delay_write(i,SimTime(2))
             print(f"[Producer] write {i} at time {SimSession.sim_time}")
             SimModule.wait_time(SimTime(1))
 
