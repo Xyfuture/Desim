@@ -75,7 +75,7 @@ class PipeGraph:
 
         self.edges_dict:dict[tuple[str,str],tuple[str,FIFO]] = {} # 对于 a->b dict[(a,b)] = fifo
 
-        self.sink_stages_name:list[str] = [] # 特殊的 stage 用于作为结束的stage
+        self.sink_stages_name:set[str] = set() # 特殊的 stage 用于作为结束的stage
 
     def add_stages_by_dict(self,stages_dict:dict[str,PipeStage]):
         self.stages_dict.update(stages_dict)
@@ -134,7 +134,13 @@ class PipeGraph:
 
 
     def config_sink_stage_names(self,names:list[str]):
-        self.sink_stages_name = names
+        self.sink_stages_name.update(names)
+
+    def add_sink_stage_by_name(self,name:str):
+        self.sink_stages_name.add(name)
+
+    def remove_sink_stage_by_name(self,name:str):
+        self.sink_stages_name.discard(name)
 
     def build_graph(self):
         # 为 stage 构建其需要的 fifo
