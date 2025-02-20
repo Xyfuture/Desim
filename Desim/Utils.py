@@ -79,7 +79,7 @@ class UniquePriorityQueue(Generic[T]):
         if old_item not in self._set:
             return
         self.remove(old_item)
-        self.append(new_item)
+        self.add(new_item)
 
     def pop(self) -> T:
         """
@@ -139,6 +139,10 @@ class UniquePriorityQueue(Generic[T]):
     def __contains__(self, item):
         return item in self._set
 
+    def __iter__(self):
+        return iter(self._queue)
+
+
 
 class UniqueDeque(Generic[T]):
     def __init__(self) -> None:
@@ -165,6 +169,11 @@ class UniqueDeque(Generic[T]):
         self.set.remove(item)
         return item
 
+    def remove(self, item: T) -> None:
+        self.deque.remove(item)
+        self.set.remove(item)
+
+
     def __contains__(self, item: T) -> bool:
         return item in self.set
 
@@ -173,6 +182,10 @@ class UniqueDeque(Generic[T]):
 
     def __repr__(self) -> str:
         return repr(self.deque)
+
+    def __iter__(self):
+        return iter(self.deque)
+
 
 
 

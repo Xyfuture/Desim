@@ -2,7 +2,9 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Literal, Optional
-from Desim.Core import Event, SimModule, SimTime
+from Desim.Core import Event, SimModule, SimTime, SimSession
+from Desim.Sync import EventQueue
+from Desim.Utils import UniquePriorityQueue, UniqueDeque
 
 
 @dataclass
@@ -94,13 +96,6 @@ class DepMemory(SimModule):
                 read_req_deque.clear()
 
 
-    def shcedule_pending_read_reqs(self):
-        pass 
-
-    def schedule_write_reqs(self):
-        pass 
-
-
     def handle_read_request(self,read_req:DepMemoryRequest):
         # for port use 
         if read_req.addr not in self.pending_read_reqs:
@@ -173,3 +168,236 @@ class DepMemoryPort():
 
     def config_dep_memory(self,dep_memory:DepMemory):
         self.dep_memory = dep_memory
+
+
+
+
+
+@dataclass
+class ChunkMemoryConfig:
+    pass
+
+
+
+@dataclass
+class ChunkMemoryRequest(DepMemoryRequest):
+    num_elements: int = 128
+    num_batch_size: int = 16
+    element_bytes: int = 1 # 元素的个数
+
+    @property
+    def chunk_bytes(self)->int:
+        return self.num_batch_size*self.element_bytes * self.num_elements
+
+    expect_finish_time:Optional[SimTime]=None
+    status:Literal['waiting','running','finished']= 'waiting'
+
+
+    def __eq__(self, other):
+        return self.expect_finish_time == other.expect_finish_time and id(self) == id(self)
+
+    def __lt__(self, other):
+        if self.expect_finish_time == other.expect_finish_time:
+            return id(self) < id(other)
+        return self.expect_finish_time < other.expect_finish_time
+
+    def __gt__(self, other):
+        if self.expect_finish_time == other.expect_finish_time:
+            return id(self) > id(other)
+        return self.expect_finish_time > other.expect_finish_time
+
+    def __hash__(self):
+        return id(self).__hash__()
+
+
+
+class ChunkMemory(DepMemory):
+    """
+    基于DepMemory的依赖关系改造而来
+    每个地址都表示一个chunk，一个chunk可以用 元素个数 batch size 和 datatype 来表示
+    不同chunk之间的 实际大小 bytes 可能是不同的， 但是 element 数应该是一致的
+    读取和写入的时间取决于 bytes的情况，与其他的无关
+    """
+
+
+
+    def __init__(self):
+        super().__init__()
+
+        self.waiting_req_queue = deque()
+        self.running_write_queue:UniquePriorityQueue[ChunkMemoryRequest] = UniquePriorityQueue()
+        self.running_read_queue:UniquePriorityQueue[ChunkMemoryRequest] = UniquePriorityQueue()
+
+        self.waiting_req_queue:UniqueDeque[ChunkMemoryRequest] = UniqueDeque()
+
+
+        self._update_event_queue = EventQueue()
+        self.update_event = self._update_event_queue.event
+
+
+    def process(self):
+        while True:
+            SimModule.wait(self.update_event)
+
+            # running queue 或者 waiting queue 发生了变化 要在这里进行进一步处理
+
+            # 首先处理 running queue 中已经结束的 req
+
+
+            # 之后不断从waiting queue 中取出新的 req，将其迁移到  running queue 中执行
+
+
+
+    def finish_running_reqs(self):
+        """
+        将当前cycle到期的req 清除出去
+        """
+        cur_time = SimSession.sim_time
+
+        # 首先处理 read queue
+        while self.running_read_queue:
+            if self.running_read_queue.peek().expect_finish_time.cycle == cur_time.cycle:
+                finished_req = self.running_read_queue.pop()
+                finished_req.status = 'finished'
+                # 唤醒相关进程
+                finished_req.read_finish_event.notify(SimTime(0))
+                # 如果 clear == True 需要设置 tag 的状态
+                if finished_req.clear:
+                    self.memory_tag[finished_req.addr] = 0
+
+                finished_req.data = self.memory_data[finished_req.addr]
+
+        # 然后处理write queue
+        while self.running_write_queue:
+            if self.running_write_queue.peek().expect_finish_time.cycle == cur_time.cycle:
+                finished_req = self.running_write_queue.pop()
+                finished_req.status = 'waiting'
+                # 唤醒相关的进程
+                finished_req.write_finish_event.notify(SimTime(0))
+
+                self.memory_data[finished_req.addr] = finished_req.data
+                self.memory_tag[finished_req.addr] += 1
+
+        # TODO 完成最原始的操作
+
+
+
+
+    def schedule_one_waiting_req(self)->bool:
+        """
+        每次只发射一条 req， 通过多次调用实现完整的一个cycle的发射任务
+        :return: 是否发射成功
+        """
+
+        def check_conflict(cur_req:ChunkMemoryRequest,pos:int)->bool:
+            """
+            有 conflict 返回一个true
+            :param cur_req:
+            :param pos:
+            :return:
+            """
+            if cur_req.command == 'read':
+
+                # 检查 waiting queue
+                req:ChunkMemoryRequest
+                for i,req in enumerate(self.waiting_req_queue):
+                    if i >= pos:
+                        break
+                    # 开始检查
+                    if req.addr == cur_req.addr:
+                        if req.command == 'write': # RAW
+                            return True
+                        elif req.command == 'read' and req.clear == True: # RAR
+                            return True
+
+                # 检查 running queue
+                for req in self.running_read_queue:
+                    if req.addr == cur_req.addr and req.clear: # RAR
+                        return True
+
+                for req in self.running_write_queue:
+                    if req.addr == cur_req.addr:
+                        return True # WAR
+
+                # 检查 tag
+                if cur_req.expect_tag != self.memory_tag[cur_req.addr]:
+                    return True
+
+
+            elif cur_req.command == 'write':
+                req:ChunkMemoryRequest
+                for i,req in enumerate(self.waiting_req_queue):
+                    if i >= pos:
+                        break
+
+                    if req.addr == cur_req.addr:
+                        return True # 无论READ还是Write 都是冲突的
+
+                for req in self.running_read_queue:
+                    if req.addr == cur_req.addr:
+                        return True
+
+                for req in self.running_write_queue:
+                    if req.addr == cur_req.addr:
+                        return True
+
+                # 检查TAG
+                if cur_req.check_write_tag and self.memory_tag[cur_req.addr] !=0:
+                    return True
+
+            else:
+                raise ValueError
+
+
+            return False
+
+
+        to_be_issue_req:Optional[ChunkMemoryRequest] = None
+
+        req:ChunkMemoryRequest
+        for i,req in enumerate(self.waiting_req_queue):
+            if not check_conflict(req,i):
+                to_be_issue_req = req
+                break
+
+        if to_be_issue_req:
+            # 发射该条req
+
+            # 首先删除 waiting queue
+            self.waiting_req_queue.remove(to_be_issue_req)
+            # 配置延迟信息
+            latency = self.calc_latency(to_be_issue_req)
+            to_be_issue_req.expect_finish_time = SimSession.sim_time + latency
+            # 设定激发时间
+            self._update_event_queue.next_notify(latency)
+
+            to_be_issue_req.status = 'running'
+
+            # 插入到队列中
+            if to_be_issue_req.command == 'read':
+                self.running_read_queue.add(to_be_issue_req)
+            elif to_be_issue_req.command == 'write':
+                self.running_write_queue.add(to_be_issue_req)
+
+            return True
+
+        return False
+
+
+    def calc_latency(self,req:ChunkMemoryRequest)->SimTime:
+        pass
+
+
+
+
+    def handle_read_request(self,read_req:ChunkMemoryRequest):
+        pass
+
+    def handle_write_request(self,write_req:ChunkMemoryRequest):
+        pass
+
+
+class ChunkMemoryPort(DepMemoryPort):
+    def __init__(self):
+        super().__init__()
+        pass
