@@ -33,6 +33,13 @@ class TestMemory(SimModule):
             print(f"Conumer read addr {i} value {value} at time {SimSession.sim_time}")
     
 
+
+class TestChunkMemory(SimModule):
+    def __init__(self):
+        super().__init__()
+
+
+
 if __name__ == '__main__':
     SimSession.reset()
     SimSession.init()

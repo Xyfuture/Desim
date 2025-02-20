@@ -385,16 +385,23 @@ class ChunkMemory(DepMemory):
 
 
     def calc_latency(self,req:ChunkMemoryRequest)->SimTime:
-        pass
+        data_bytes = req.chunk_bytes
+        
+        return SimTime(100)
 
 
 
 
     def handle_read_request(self,read_req:ChunkMemoryRequest):
-        pass
+        self.waiting_req_queue.append(read_req)
+        self._update_event_queue.notify_time_queue(SimTime(1))
+
+
 
     def handle_write_request(self,write_req:ChunkMemoryRequest):
-        pass
+        self.waiting_req_queue.append(write_req)
+        self._update_event_queue.notify_time_queue(SimTime(1))
+
 
 
 class ChunkMemoryPort(DepMemoryPort):
