@@ -181,6 +181,8 @@ class ChunkMemoryConfig:
 
 @dataclass
 class ChunkMemoryRequest(DepMemoryRequest):
+    port:ChunkMemoryPort
+
     num_elements: int = 128
     num_batch_size: int = 16
     element_bytes: int = 1 # 元素的个数
@@ -194,7 +196,7 @@ class ChunkMemoryRequest(DepMemoryRequest):
 
 
     def __eq__(self, other):
-        return self.expect_finish_time == other.expect_finish_time and id(self) == id(self)
+        return self.expect_finish_time == other.expect_finish_time and (id(self) == id(other))
 
     def __lt__(self, other):
         if self.expect_finish_time == other.expect_finish_time:
@@ -211,7 +213,7 @@ class ChunkMemoryRequest(DepMemoryRequest):
 
 
 
-class ChunkMemory(DepMemory):
+class ChunkMemory(SimModule):
     """
     基于DepMemory的依赖关系改造而来
     每个地址都表示一个chunk，一个chunk可以用 元素个数 batch size 和 datatype 来表示
@@ -224,6 +226,9 @@ class ChunkMemory(DepMemory):
     def __init__(self):
         super().__init__()
 
+        self.memory_data:dict[int,any] = defaultdict(None)
+        self.memory_tag:dict[int,int] = defaultdict(int)
+
         self.waiting_req_queue = deque()
         self.running_write_queue:UniquePriorityQueue[ChunkMemoryRequest] = UniquePriorityQueue()
         self.running_read_queue:UniquePriorityQueue[ChunkMemoryRequest] = UniquePriorityQueue()
@@ -233,19 +238,20 @@ class ChunkMemory(DepMemory):
 
         self._update_event_queue = EventQueue()
         self.update_event = self._update_event_queue.event
+        self.register_coroutine(self.process)
 
 
     def process(self):
         while True:
             SimModule.wait(self.update_event)
-
             # running queue 或者 waiting queue 发生了变化 要在这里进行进一步处理
 
             # 首先处理 running queue 中已经结束的 req
-
+            self.finish_running_reqs()
 
             # 之后不断从waiting queue 中取出新的 req，将其迁移到  running queue 中执行
-
+            while self.schedule_one_waiting_req():
+                pass
 
 
     def finish_running_reqs(self):
@@ -266,19 +272,22 @@ class ChunkMemory(DepMemory):
                     self.memory_tag[finished_req.addr] = 0
 
                 finished_req.data = self.memory_data[finished_req.addr]
+            else:
+                break
 
         # 然后处理write queue
         while self.running_write_queue:
             if self.running_write_queue.peek().expect_finish_time.cycle == cur_time.cycle:
                 finished_req = self.running_write_queue.pop()
-                finished_req.status = 'waiting'
+                finished_req.status = 'finished'
                 # 唤醒相关的进程
                 finished_req.write_finish_event.notify(SimTime(0))
 
                 self.memory_data[finished_req.addr] = finished_req.data
                 self.memory_tag[finished_req.addr] += 1
+            else:
+                break
 
-        # TODO 完成最原始的操作
 
 
 
@@ -331,7 +340,8 @@ class ChunkMemory(DepMemory):
                         break
 
                     if req.addr == cur_req.addr:
-                        return True # 无论READ还是Write 都是冲突的
+                        if req.command == 'write': return True
+                        if req.command == 'read' and req.clear == True: return True
 
                 for req in self.running_read_queue:
                     if req.addr == cur_req.addr:
@@ -394,17 +404,71 @@ class ChunkMemory(DepMemory):
 
     def handle_read_request(self,read_req:ChunkMemoryRequest):
         self.waiting_req_queue.append(read_req)
-        self._update_event_queue.notify_time_queue(SimTime(1))
+        self._update_event_queue.next_notify(SimTime(1))
 
 
 
     def handle_write_request(self,write_req:ChunkMemoryRequest):
         self.waiting_req_queue.append(write_req)
-        self._update_event_queue.notify_time_queue(SimTime(1))
+        self._update_event_queue.next_notify(SimTime(1))
 
 
 
 class ChunkMemoryPort(DepMemoryPort):
-    def __init__(self):
+    def __init__(self,chunk_memory:Optional[ChunkMemory]=None):
         super().__init__()
-        pass
+
+        self.chunk_memory:Optional[ChunkMemory] = chunk_memory
+
+
+    def config_chunk_memory(self,chunk_memory:ChunkMemory) -> None:
+        self.chunk_memory = chunk_memory
+
+
+    def read(self,addr:int,tag_value:int=0,clear:bool=False,
+                num_elements:int=128,num_batch_size:int=16,element_bytes:int=1)->any:
+        if self.read_busy:
+            raise RuntimeError('read busy')
+
+        self.read_busy = True
+
+        read_req = ChunkMemoryRequest(
+            port=self,
+            command='read',
+            addr=addr,
+            read_finish_event=self.read_finish_event,
+            expect_tag=tag_value,
+            clear=clear,
+            num_elements=num_elements,
+            num_batch_size=num_batch_size,
+            element_bytes=element_bytes
+        )
+
+        self.chunk_memory.handle_read_request(read_req)
+        SimModule.wait(self.read_finish_event)
+
+        self.read_busy = False
+        return read_req.data
+
+    def write(self,addr:int,data:any,check_write_tag:bool=True,
+                num_elements:int=128,num_batch_size:int=16,element_bytes:int=1):
+        if self.write_busy:
+            raise RuntimeError('write busy')
+        self.write_busy = True
+        write_req = ChunkMemoryRequest(
+            port=self,
+            command='write',
+            addr=addr,
+            data=data,
+            check_write_tag=check_write_tag,
+            write_finish_event=self.write_finish_event,
+            num_elements=num_elements,
+            num_batch_size=num_batch_size,
+            element_bytes=element_bytes
+        )
+
+        self.chunk_memory.handle_write_request(write_req)
+        SimModule.wait(self.write_finish_event)
+
+        self.write_busy = False
+

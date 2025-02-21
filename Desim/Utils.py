@@ -24,7 +24,8 @@ class UniquePriorityQueue(Generic[T]):
             self.valid_check()
 
         if item in self._set:
-            raise ValueError(f"{item} already exists")
+            # raise ValueError(f"{item} already exists")
+            return
         self._queue.add(item)
         self._set.add(item)
 
@@ -150,9 +151,15 @@ class UniqueDeque(Generic[T]):
         self.set: Set[T] = set()
 
     def append(self, item: T) -> None:
+        if __debug__:
+            self.valid_check()
+
         if item not in self.set:
             self.set.add(item)
             self.deque.append(item)
+
+        if __debug__:
+            self.valid_check()
 
     def appendleft(self, item: T) -> None:
         if item not in self.set:
@@ -160,8 +167,15 @@ class UniqueDeque(Generic[T]):
             self.deque.appendleft(item)
 
     def pop(self) -> T:
+        if __debug__:
+            self.valid_check()
+
         item = self.deque.pop()
         self.set.remove(item)
+
+        if __debug__:
+            self.valid_check()
+
         return item
 
     def popleft(self) -> T:
@@ -170,9 +184,14 @@ class UniqueDeque(Generic[T]):
         return item
 
     def remove(self, item: T) -> None:
+        if __debug__:
+            self.valid_check()
+
         self.deque.remove(item)
         self.set.remove(item)
 
+        if __debug__:
+            self.valid_check()
 
     def __contains__(self, item: T) -> bool:
         return item in self.set
@@ -185,6 +204,17 @@ class UniqueDeque(Generic[T]):
 
     def __iter__(self):
         return iter(self.deque)
+
+
+    def valid_check(self)->bool:
+        for item in self.deque:
+            if item not in self.set:
+                assert False
+        for item in self.set:
+            if item not in self.deque:
+                assert False
+
+        return True
 
 
 
