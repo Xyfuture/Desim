@@ -180,16 +180,32 @@ class ChunkMemoryConfig:
 
 
 @dataclass
+class ChunkPacket:
+    payload: any = None
+
+    num_elements: int = -1
+    batch_size:int = -1
+    element_bytes:int = -1
+
+
+@dataclass
 class ChunkMemoryRequest(DepMemoryRequest):
     port:ChunkMemoryPort
 
-    num_elements: int = 128
-    num_batch_size: int = 16
-    element_bytes: int = 1 # 元素的个数
+    data:ChunkPacket = ChunkPacket(
+        payload=None,
+        num_elements=128,
+        batch_size=16,
+        element_bytes=2
+    )
+
+    # num_elements: int = 128 # 元素的个数
+    # num_batch_size: int = 16
+    # element_bytes: int = 1
 
     @property
     def chunk_bytes(self)->int:
-        return self.num_batch_size*self.element_bytes * self.num_elements
+        return self.data.num_elements*self.data.batch_size*self.data.element_bytes
 
     expect_finish_time:Optional[SimTime]=None
     status:Literal['waiting','running','finished']= 'waiting'
@@ -271,7 +287,7 @@ class ChunkMemory(SimModule):
                 if finished_req.clear:
                     self.memory_tag[finished_req.addr] = 0
 
-                finished_req.data = self.memory_data[finished_req.addr]
+                finished_req.data.payload = self.memory_data[finished_req.addr]
             else:
                 break
 
@@ -283,7 +299,7 @@ class ChunkMemory(SimModule):
                 # 唤醒相关的进程
                 finished_req.write_finish_event.notify(SimTime(0))
 
-                self.memory_data[finished_req.addr] = finished_req.data
+                self.memory_data[finished_req.addr] = finished_req.data.payload
                 self.memory_tag[finished_req.addr] += 1
             else:
                 break
@@ -439,16 +455,19 @@ class ChunkMemoryPort(DepMemoryPort):
             read_finish_event=self.read_finish_event,
             expect_tag=tag_value,
             clear=clear,
-            num_elements=num_elements,
-            num_batch_size=num_batch_size,
-            element_bytes=element_bytes
+            data=ChunkPacket(
+                num_elements=num_elements,
+                batch_size=num_batch_size,
+                element_bytes=element_bytes
+            )
         )
 
         self.chunk_memory.handle_read_request(read_req)
         SimModule.wait(self.read_finish_event)
 
         self.read_busy = False
-        return read_req.data
+        return read_req.data.payload
+
 
     def write(self,addr:int,data:any,check_write_tag:bool=True,
                 num_elements:int=128,num_batch_size:int=16,element_bytes:int=1):
@@ -459,12 +478,14 @@ class ChunkMemoryPort(DepMemoryPort):
             port=self,
             command='write',
             addr=addr,
-            data=data,
             check_write_tag=check_write_tag,
             write_finish_event=self.write_finish_event,
-            num_elements=num_elements,
-            num_batch_size=num_batch_size,
-            element_bytes=element_bytes
+            data=ChunkPacket(
+                payload=data,
+                num_elements=num_elements,
+                batch_size=num_batch_size,
+                element_bytes=element_bytes
+            ),
         )
 
         self.chunk_memory.handle_write_request(write_req)
