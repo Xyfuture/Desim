@@ -188,6 +188,11 @@ class ChunkPacket:
     element_bytes:int = -1
 
 
+    @property
+    def get_bytes(self):
+        return self.num_elements * self.batch_size * self.element_bytes
+
+
 @dataclass
 class ChunkMemoryRequest(DepMemoryRequest):
     port:ChunkMemoryPort
