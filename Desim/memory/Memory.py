@@ -1,6 +1,6 @@
 from __future__ import annotations
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Optional
 from Desim.Core import Event, SimModule, SimTime, SimSession
 from Desim.Sync import EventQueue
@@ -197,12 +197,12 @@ class ChunkPacket:
 class ChunkMemoryRequest(DepMemoryRequest):
     port:ChunkMemoryPort
 
-    data:ChunkPacket = ChunkPacket(
+    data:ChunkPacket = field(default_factory=lambda: ChunkPacket(
         payload=None,
         num_elements=128,
         batch_size=16,
         element_bytes=2
-    )
+    ))
 
     # num_elements: int = 128 # 元素的个数
     # num_batch_size: int = 16
@@ -228,6 +228,19 @@ class ChunkMemoryRequest(DepMemoryRequest):
         if self.expect_finish_time == other.expect_finish_time:
             return id(self) > id(other)
         return self.expect_finish_time > other.expect_finish_time
+
+
+    def __le__(self, other):
+        if self.expect_finish_time == other.expect_finish_time:
+            return id(self) <= id(other)
+        return self.expect_finish_time <= other.expect_finish_time
+
+
+    def __ge__(self, other):
+        if self.expect_finish_time == other.expect_finish_time:
+            return id(self) >= id(other)
+        return self.expect_finish_time >= other.expect_finish_time
+
 
     def __hash__(self):
         return id(self).__hash__()
@@ -310,7 +323,16 @@ class ChunkMemory(SimModule):
                 break
 
 
+    def direct_write(self,addr:int,data:any,check_write_tag:bool=True,
+                     num_elements:int=128,num_batch_size:int=1,element_bytes:int=1):
+        """
+        直接写入到内存, 用于开始仿真之前预先放置数据
+        """
+        if check_write_tag:
+            assert self.memory_tag[addr] == 0
 
+        self.memory_data[addr]  = data
+        self.memory_tag[addr] += 1
 
 
     def schedule_one_waiting_req(self)->bool:
