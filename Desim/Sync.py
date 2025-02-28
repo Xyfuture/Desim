@@ -60,6 +60,8 @@ class EventQueue(SimModule):
 
             if self.notify_time_queue:
                 delay_time = self.notify_time_queue.peek() - SimSession.sim_time
+                if delay_time == SimTime(0,0):
+                    delay_time = SimTime(0,1)
                 self.event.notify(delay_time)
 
     def post_event(self):
