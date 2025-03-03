@@ -7,7 +7,9 @@ class TestSemaphore(SimModule):
     def __init__(self):
         super().__init__()
 
+        # self.semaphore = SimSemaphore(1)
         self.semaphore = SimOrderedSemaphore(1)
+
 
         self.register_coroutine(self.poster)
 
