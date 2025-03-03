@@ -384,7 +384,10 @@ class ChunkMemory(SimModule):
 
                     if req.addr == cur_req.addr:
                         if req.command == 'write': return True
-                        if req.command == 'read' and req.clear == True: return True
+                        # if req.command == 'read' and req.clear == True:
+                        #     if self.memory_tag[req.addr] == 0: return False
+                        #     else: return True
+                        # 这段应该是重复的
 
                 for req in self.running_read_queue:
                     if req.addr == cur_req.addr:

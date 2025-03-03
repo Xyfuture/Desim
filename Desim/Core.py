@@ -98,6 +98,14 @@ class SimCoroutine(greenlet):
     def __init__(self,func:Callable):
         super(SimCoroutine, self).__init__(func)
 
+        self.status = "created"
+
+    def register(self):
+        self.status = 'registered'
+
+    def is_registered(self)->bool:
+        return self.status == 'registered'
+
 
 
 
@@ -114,6 +122,8 @@ class SimModule:
         self._coroutines.add(coroutine)
         for event in events:
             event.add_static_waiting_coroutine(coroutine)
+
+        SimSession.scheduler.add_coroutine(coroutine)
         
         
     def register_method(self,func:Callable,*events:Event):
@@ -258,27 +268,28 @@ class Scheduler:
 
         self.executor_coroutine:greenlet = None
 
-        self.initialize_coroutine = greenlet(self.initialize)
+        # self.initialize_coroutine = greenlet(self.initialize)
         self.main_loop_coroutine = greenlet(self.main_loop)
 
         self.status:Literal['uninitialized','initializing','initialized','running','finished'] = 'uninitialized'
 
 
     def run(self):
-        self.initialize_coroutine.switch()
-        self.status = 'initialized'
+        # self.initialize_coroutine.switch()
+        # self.status = 'initialized'
         self.main_loop_coroutine.switch()
         self.status = 'finished'
 
-    def initialize(self):
-        self.status = 'initializing'
-        self.executor_coroutine = greenlet.getcurrent()
-        # 初始化所有的 coroutine, 将所有的coroutine放入到 runnable queue中
-        for module in SimSession.sim_modules:
-            for coroutine in module._coroutines:
-                # 需要指定 parent，这样 sim module的 Coroutine执行结束后，会回到mainloop 执行其他的 Coroutine
-                coroutine.parent = self.main_loop_coroutine
-                self.runnable_queue.append(coroutine)
+    # def initialize(self):
+    #     self.status = 'initializing'
+    #     self.executor_coroutine = greenlet.getcurrent()
+    #     # 初始化所有的 coroutine, 将所有的coroutine放入到 runnable queue中
+    #     for module in SimSession.sim_modules:
+    #         for coroutine in module._coroutines:
+    #             # 需要指定 parent，这样 sim module的 Coroutine执行结束后，会回到mainloop 执行其他的 Coroutine
+    #             coroutine.parent = self.main_loop_coroutine
+    #             coroutine.register()
+    #             self.runnable_queue.append(coroutine)
 
 
     def main_loop(self):
@@ -341,17 +352,18 @@ class Scheduler:
         self.event_queue.remove(event)
 
     # 受限于初始化机制，目前动态初始化需要借助特殊的函数进行。
-    def dynamic_add_module(self, module:SimModule):
+    def add_module(self, module:SimModule):
         for coroutine in module._coroutines:
-            self.dynamic_add_coroutine(coroutine)
+            self.add_coroutine(coroutine)
 
-    def dynamic_add_coroutine(self,coroutine:SimCoroutine):
+    def add_coroutine(self, coroutine:SimCoroutine):
         # 手动执行类似初始化的操作
-        if self.status == 'running':
-            coroutine.parent = self.main_loop_coroutine
-            self.runnable_queue.append(coroutine)
-        else:
-            assert False
+        if coroutine.is_registered():
+            return
+        coroutine.register()
+        coroutine.parent = self.main_loop_coroutine
+        self.runnable_queue.append(coroutine)
+
 
 
 class SimSession:

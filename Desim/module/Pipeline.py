@@ -62,7 +62,7 @@ class PipeStage(SimModule):
     @staticmethod
     def dynamic_create(handler:Optional[Callable[[dict[str,FIFO],dict[str,FIFO]], bool]]=None, times:int=-1):
         pipe_stage = PipeStage(handler,times)
-        SimSession.scheduler.dynamic_add_module(pipe_stage)
+        SimSession.scheduler.add_module(pipe_stage)
 
         return pipe_stage
 

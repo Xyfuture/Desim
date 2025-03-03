@@ -1,4 +1,7 @@
-from typing import Callable
+from collections import deque
+from typing import Callable, Deque
+
+
 from Desim.Core import Event, SimModule, SimSession, SimTime
 from Desim.Utils import UniquePriorityQueue
 
@@ -110,6 +113,28 @@ class SimDelaySemaphore(SimSemaphore):
         self.delay_handler.delay_call(delay_time)
 
 
-        
-        
+
+class SimOrderedSemaphore(SimSemaphore):
+    def __init__(self,value:int):
+        super().__init__(value)
+
+        self.event_list:Deque[Event] = deque()
+
+
+    def wait(self):
+        if self.in_use():
+            self.value -= 1  # 负数表示 等待的coroutine数量
+            # 如果资源不够，就进入等待状态
+            event = Event() # 每次都创建一个新的 event 并进入排队
+            self.event_list.append(event)
+            SimModule.wait(event)
+        else:
+            self.value -= 1
+
+    def post(self):
+        if self.value < 0:
+            # 说明之前有 coroutine 在等待，那么就唤醒一个 coroutine
+            event = self.event_list.popleft() # FIFO 的顺序
+            event.notify(SimTime(0))
+        self.value += 1
 
