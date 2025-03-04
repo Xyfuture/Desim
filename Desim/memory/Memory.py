@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Literal, Optional
@@ -189,7 +191,7 @@ class ChunkPacket:
 
 
     @property
-    def get_bytes(self):
+    def chunk_bytes(self):
         return self.num_elements * self.batch_size * self.element_bytes
 
 
@@ -247,6 +249,7 @@ class ChunkMemoryRequest(DepMemoryRequest):
 
 
 
+
 class ChunkMemory(SimModule):
     """
     基于DepMemory的依赖关系改造而来
@@ -257,8 +260,10 @@ class ChunkMemory(SimModule):
 
 
 
-    def __init__(self):
+    def __init__(self,bandwidth:int=16):
         super().__init__()
+
+        self.bandwidth = bandwidth # bytes/cycle  每个 port 的
 
         self.memory_data:dict[int,any] = defaultdict(None)
         self.memory_tag:dict[int,int] = defaultdict(int)
@@ -442,8 +447,10 @@ class ChunkMemory(SimModule):
 
     def calc_latency(self,req:ChunkMemoryRequest)->SimTime:
         data_bytes = req.chunk_bytes
+
+        latency = math.ceil(data_bytes/self.bandwidth)
         
-        return SimTime(100)
+        return SimTime(latency)
 
 
 
