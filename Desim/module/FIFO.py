@@ -1,15 +1,18 @@
-from typing import Optional
+from typing import Optional, TypeVar, Generic, Deque
 from collections import deque
 
 from Desim.Core import Event, SimTime, SimModule
 from Desim.Sync import SimDelaySemaphore, SimSemaphore
 
 
-class FIFO:
+T = TypeVar('T')
+
+
+class FIFO(Generic[T]):
     def __init__(self,fifo_size:int,init_size:int=0,init_data:Optional[list]=None):
         self.fifo_size = fifo_size
 
-        self.fifo_data = deque(maxlen=fifo_size)
+        self.fifo_data:Deque[T] = deque(maxlen=fifo_size)
 
         self.empty_semaphore = SimSemaphore(init_size)
         self.full_semaphore = SimSemaphore(fifo_size - init_size)
@@ -23,7 +26,7 @@ class FIFO:
                 self.fifo_data.append(item)
 
 
-    def read(self):
+    def read(self)->T:
         self.empty_semaphore.wait()
         self.full_semaphore.post()
         if self.empty_semaphore.get_value() == 0:
@@ -33,7 +36,7 @@ class FIFO:
         return front_data
 
 
-    def write(self,data):
+    def write(self,data:T):
         self.full_semaphore.wait()
         self.empty_semaphore.post()
 
@@ -42,13 +45,13 @@ class FIFO:
 
         self.fifo_data.append(data)
 
-    def direct_read(self):
+    def direct_read(self)->T:
         if self.empty_semaphore.get_value() == 0:
             return None
         data = self.fifo_data.popleft()
         return data
 
-    def direct_write(self,data)->bool:
+    def direct_write(self,data:T)->bool:
         """
         直接写入可能会失败, 因此返回bool 表示操作成功或失败
         """
@@ -75,7 +78,7 @@ class FIFO:
 
 
 
-class DelayFIFO(FIFO):
+class DelayFIFO(FIFO[T]):
     # 支持延迟写入的功能 
     def __init__(self,fifo_size:int,init_size:int=0):
         super().__init__(fifo_size,init_size)

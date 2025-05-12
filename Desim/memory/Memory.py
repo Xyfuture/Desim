@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, TypeVar, Generic
 from Desim.Core import Event, SimModule, SimTime, SimSession
 from Desim.Sync import EventQueue
 from Desim.Utils import UniquePriorityQueue, UniqueDeque
@@ -181,9 +181,11 @@ class ChunkMemoryConfig:
 
 
 
+T = TypeVar('T')
+
 @dataclass
-class ChunkPacket:
-    payload: any = None
+class ChunkPacket(Generic[T]):
+    payload: T = None
 
     num_elements: int = -1
     batch_size:int = -1
